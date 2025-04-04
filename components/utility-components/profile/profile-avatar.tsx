@@ -2,6 +2,7 @@ import { ProfileMapContext } from "@/utils/context/context";
 import { User } from "@nextui-org/react";
 import { nip19 } from "nostr-tools";
 import { useContext, useEffect, useState } from "react";
+import { verifyNip05Identifier } from "@/components/utility/nostr-helper-functions";
 
 export const ProfileAvatar = ({
   pubkey,
@@ -18,6 +19,8 @@ export const ProfileAvatar = ({
 }) => {
   const [pfp, setPfp] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [isNip05Verified, setIsNip05Verified] = useState(false);
+  const [nip05Identifier, setNip05Identifier] = useState<string | null>(null);
   const profileContext = useContext(ProfileMapContext);
   const npub = pubkey ? nip19.npubEncode(pubkey) : "";
   useEffect(() => {
@@ -38,6 +41,11 @@ export const ProfileAvatar = ({
         ? profile.content.picture
         : `https://robohash.idena.io/${pubkey}`,
     );
+
+    if (profile?.content?.nip05) {
+      setNip05Identifier(profile.content.nip05);
+      verifyNip05Identifier(profile.content.nip05).then(setIsNip05Verified);
+    }
   }, [profileContext, pubkey]);
 
   return (
@@ -47,12 +55,12 @@ export const ProfileAvatar = ({
       }}
       className={"transition-transform"}
       classNames={{
-        name: "overflow-hidden text-ellipsis whitespace-nowrap text-light-text dark:text-dark-text hidden block",
+        name: `overflow-hidden ${isNip05Verified ? 'text-shopstr-purple dark:text-shopstr-yellow' : 'text-ellipsis whitespace-nowrap text-light-text dark:text-dark-text hidden block'}`,
         base: `${baseClassname}`,
         description: `${descriptionClassname}`,
         wrapper: `${wrapperClassname}`,
       }}
-      name={displayName}
+      name={isNip05Verified && nip05Identifier ? nip05Identifier : displayName}
       description={description}
     />
   );

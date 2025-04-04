@@ -22,6 +22,7 @@ import {
 import { useRouter } from "next/router";
 import FailureModal from "../failure-modal";
 import { SignerContext } from "@/utils/context/nostr-context";
+import { verifyNip05Identifier } from "@/components/utility/nostr-helper-functions";
 
 type DropDownKeys =
   | "shop"
@@ -45,6 +46,8 @@ export const ProfileWithDropdown = ({
 }) => {
   const [pfp, setPfp] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [isNip05Verified, setIsNip05Verified] = useState(false);
+  const [nip05Identifier, setNip05Identifier] = useState<string | null>(null);
   const [showFailureModal, setShowFailureModal] = useState(false);
   const [isNPubCopied, setIsNPubCopied] = useState(false);
   const profileContext = useContext(ProfileMapContext);
@@ -68,6 +71,11 @@ export const ProfileWithDropdown = ({
         ? profile.content.picture
         : `https://robohash.idena.io/${pubkey}`,
     );
+
+    if (profile?.content?.nip05) {
+      setNip05Identifier(profile.content.nip05);
+      verifyNip05Identifier(profile.content.nip05).then(setIsNip05Verified);
+    }
   }, [profileContext, pubkey]);
 
   const DropDownItems: {
@@ -179,10 +187,10 @@ export const ProfileWithDropdown = ({
             }}
             className={"transition-transform"}
             classNames={{
-              name: `overflow-hidden text-ellipsis whitespace-nowrap text-light-text dark:text-dark-text hidden ${nameClassname}`,
+              name: `overflow-hidden ${isNip05Verified ? 'text-shopstr-purple dark:text-shopstr-yellow' : 'text-ellipsis whitespace-nowrap text-light-text dark:text-dark-text hidden'} ${nameClassname}`,
               base: `${baseClassname}`,
             }}
-            name={displayName}
+            name={isNip05Verified && nip05Identifier ? nip05Identifier : displayName}
           />
         </DropdownTrigger>
         <DropdownMenu
