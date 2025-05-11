@@ -415,19 +415,24 @@ export default function ProductForm({
                       className="flex h-full w-full items-center justify-center p-4"
                       onClick={(e) => e.preventDefault()}
                     >
-                      <Image
-                        alt="Product Image"
-                        className="object-cover"
-                        src="/no-image-placeholder.png"
-                        width={350}
-                        onClick={(e) => e.preventDefault()}
-                      />
+                      <FileUploaderButton
+                        isPlaceholder={true}
+                        isProductUpload={true}
+                        imgCallbackOnUpload={(imgUrl) => {
+                          if (imgUrl && imgUrl.length > 0) {
+                            setImageError(null);
+                            setImages((prevValues) => [...prevValues, imgUrl]);
+                          }
+                        }}
+                      >
+                        Upload Images
+                      </FileUploaderButton>
                     </div>,
                   ]}
             </Carousel>
             {imageError && <div className="text-red-600">{imageError}</div>}
             <FileUploaderButton
-              isIconOnly={false}
+              isProductUpload={true}
               className={SHOPSTRBUTTONCLASSNAMES}
               imgCallbackOnUpload={(imgUrl) => {
                 if (imgUrl && imgUrl.length > 0) {

@@ -11,7 +11,6 @@ import {
   SelectItem,
 } from "@nextui-org/react";
 import {
-  ArrowUpOnSquareIcon,
   CheckIcon,
   ClipboardIcon,
   EyeSlashIcon,
@@ -135,7 +134,6 @@ const UserProfilePage = () => {
                     />
                   )}
                   <FileUploaderButton
-                    isIconOnly={false}
                     className={`absolute bottom-5 right-5 z-20 border-2 border-white bg-shopstr-purple shadow-md ${SHOPSTRBUTTONCLASSNAMES}`}
                     imgCallbackOnUpload={(imgUrl) => setValue("banner", imgUrl)}
                   >
@@ -151,9 +149,7 @@ const UserProfilePage = () => {
                         imgCallbackOnUpload={(imgUrl) =>
                           setValue("picture", imgUrl)
                         }
-                      >
-                        <ArrowUpOnSquareIcon className="h-6 w-6" />
-                      </FileUploaderButton>
+                      />
                       {watchPicture ? (
                         <Image
                           src={watchPicture}
