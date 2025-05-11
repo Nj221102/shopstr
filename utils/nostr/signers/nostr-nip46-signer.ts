@@ -198,6 +198,21 @@ export class NostrNIP46Signer implements NostrSigner {
     return await this.sendRPC("nip44_decrypt", [pubkey, cipherText]);
   }
 
+  public async signAuthEvent(challenge: string, relay: string): Promise<NostrEvent> {
+    
+    const authEvent: NostrEventTemplate = {
+      kind: 22242,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [
+        ["relay", relay],
+        ["challenge", challenge]
+      ],
+      content: ""
+    };
+    
+    return await this.sign(authEvent);
+  }
+
   private getNewRequestId(): string {
     return "shp" + this.instanceId + this.eventCounter++;
   }

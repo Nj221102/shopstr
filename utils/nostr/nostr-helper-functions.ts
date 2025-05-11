@@ -1233,3 +1233,96 @@ export async function verifyNip05Identifier(
     return false;
   }
 }
+
+export async function authenticateToRelay(
+  signer: NostrSigner,
+  relay: any,
+  relayUrl: string
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      // Set timeout in case relay doesn't respond
+      const timeout = setTimeout(() => {
+        console.warn(`NIP-42 auth timeout for ${relayUrl}`);
+        resolve(false);
+      }, 5000);
+
+      // Challenge response handler
+      const handleChallenge = async (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          // Check if it's an AUTH challenge response
+          if (Array.isArray(data) && data[0] === "AUTH" && data.length > 1) {
+            const challenge = data[1];
+            console.debug(`📡 NIP-42: Received challenge from ${relayUrl}: ${challenge.substring(0, 10)}...`);
+            
+            // Sign the auth event with the challenge
+            const authEvent = await signer.signAuthEvent(challenge, relayUrl);
+            
+            // Send the signed auth event back to the relay
+            relay.socket.send(JSON.stringify(["AUTH", authEvent]));
+            
+            // Listen for auth confirmation
+            const confirmedHandler = (confirmEvent: MessageEvent) => {
+              try {
+                const confirmData = JSON.parse(confirmEvent.data);
+                if (Array.isArray(confirmData) && confirmData[0] === "OK") {
+                  clearTimeout(timeout);
+                  relay.socket.removeEventListener("message", handleChallenge);
+                  relay.socket.removeEventListener("message", confirmedHandler);
+                  console.debug(`📡 NIP-42: Auth confirmed by ${relayUrl}`);
+                  resolve(true);
+                } else if (Array.isArray(confirmData) && confirmData[0] === "NOTICE") {
+                  console.warn(`NIP-42 auth notice from ${relayUrl}: ${confirmData[1]}`);
+                }
+              } catch (e) {
+                // Ignore parsing errors
+              }
+            };
+            
+            relay.socket.addEventListener("message", confirmedHandler);
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      };
+      
+      // Add the event listener for the challenge response
+      relay.socket.addEventListener("message", handleChallenge);
+      
+      // Request authentication challenge
+      relay.socket.send(JSON.stringify(["AUTH", ""]));
+      console.debug(`📡 NIP-42: Requesting auth challenge from ${relayUrl}`);
+      
+    } catch (error) {
+      console.error(`NIP-42 auth error for ${relayUrl}:`, error);
+      resolve(false);
+    }
+  });
+}
+
+export async function authenticateToRelays(
+  nostr: NostrManager,
+  signer: NostrSigner, 
+  relayUrls?: string[]
+): Promise<Map<string, boolean>> {
+  const results = new Map<string, boolean>();
+  const targets = relayUrls || [];
+  
+  // Process in batches of 3 to avoid overwhelming the browser
+  const batchSize = 3;
+  for (let i = 0; i < targets.length; i += batchSize) {
+    const batch = targets.slice(i, i + batchSize);
+    const promises = batch.map(url => 
+      nostr.authenticateToRelay(signer, url)
+        .then(result => {
+          results.set(url, result);
+          return { url, result };
+        })
+    );
+    
+    await Promise.all(promises);
+  }
+  
+  return results;
+}

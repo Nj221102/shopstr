@@ -45,6 +45,21 @@ export class NostrNIP07Signer implements NostrSigner {
   public async sign(event: NostrEventTemplate): Promise<NostrEvent> {
     return await window.nostr.signEvent(event);
   }
+  
+  public async signAuthEvent(challenge: string, relay: string): Promise<NostrEvent> {
+    
+    const authEvent: NostrEventTemplate = {
+      kind: 22242,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [
+        ["relay", relay],
+        ["challenge", challenge]
+      ],
+      content: ""
+    };
+    
+    return await window.nostr.signEvent(authEvent);
+  }
 
   public async encrypt(pubkey: string, plainText: string): Promise<string> {
     return await window.nostr.nip44.encrypt(pubkey, plainText);

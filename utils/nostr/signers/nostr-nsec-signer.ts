@@ -219,6 +219,21 @@ export class NostrNSecSigner implements NostrSigner {
     return decrypted;
   }
 
+  public async signAuthEvent(challenge: string, relay: string): Promise<NostrEvent> {
+    const authEvent: NostrEventTemplate = {
+      kind: 22242,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [
+        ["relay", relay],
+        ["challenge", challenge]
+      ],
+      content: ""
+    };
+    
+    const privKey = await this._getPrivKey();
+    return finalizeEvent(authEvent, privKey);
+  }
+
   public async close(): Promise<void> {
     this.rememberedPassphrase = undefined;
   }

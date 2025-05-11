@@ -8,6 +8,7 @@ export interface NostrSigner {
   decrypt(pubkey: string, cipherText: string): Promise<string>;
   close(): Promise<void>;
   toJSON(): { [key: string]: any };
+  signAuthEvent(challenge: string, relay: string): Promise<NostrEvent>;
 }
 
 export type ChallengeHandler = (

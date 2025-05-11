@@ -15,6 +15,7 @@ import {
 import { NostrNSecSigner } from "@/utils/nostr/signers/nostr-nsec-signer";
 import { NostrNIP07Signer } from "@/utils/nostr/signers/nostr-nip07-signer";
 import { newPromiseWithTimeout } from "../timeout";
+import { authenticateToRelay, authenticateToRelays } from "@/utils/nostr/nostr-helper-functions";
 
 export type NostrRelay = {
   url: string;
@@ -23,6 +24,7 @@ export type NostrRelay = {
   activeSubs: Array<NostrSub>;
   sleeping: boolean;
   lastActive: number;
+  authenticated?: boolean;
 };
 
 export type NostrSub = {
@@ -39,6 +41,7 @@ export type NostrManagerParams = {
   gcInterval: number;
   readable?: boolean;
   writable?: boolean;
+  autoAuth?: boolean;
 };
 
 export class NostrManager {
@@ -46,6 +49,7 @@ export class NostrManager {
   private readonly params: NostrManagerParams;
   private readonly relays: Array<NostrRelay> = [];
   private gcTimeout: any;
+  private authenticatedRelays: Map<string, boolean> = new Map();
 
   constructor(relays: Array<string> = [], params?: NostrManagerParams) {
     const {
@@ -54,6 +58,7 @@ export class NostrManager {
       connectionTimeout = undefined,
       readable = true,
       writable = true,
+      autoAuth = false,
     } = params || {};
 
     this.pool = new SimplePool();
@@ -63,6 +68,7 @@ export class NostrManager {
       connectionTimeout,
       readable,
       writable,
+      autoAuth,
     };
     for (const relay of relays) {
       this.addRelay(relay, { connectionTimeout: connectionTimeout });
@@ -118,6 +124,38 @@ export class NostrManager {
     this.gcTimeout = setTimeout(() => {
       this.gc();
     }, this.params.keepAliveTime);
+  }
+
+  public async authenticateToRelay(signer: NostrSigner, relayUrl: string): Promise<boolean> {
+    try {
+      if (!this.relays.find(r => r.url === relayUrl)) {
+        this.addRelay(relayUrl);
+      }
+
+      const relay = await this.pool.ensureRelay(relayUrl);
+      const result = await authenticateToRelay(signer, relay, relayUrl);
+      this.authenticatedRelays.set(relayUrl, result);
+
+      const relayObj = this.relays.find(r => r.url === relayUrl);
+      if (relayObj) {
+        relayObj.authenticated = result;
+      }
+
+      if (result) {
+        console.info(`✅ NIP-42 Auth successful for ${relayUrl}`);
+      } else {
+        console.warn(`❌ NIP-42 Auth failed for ${relayUrl}`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error(`❌ NIP-42 Auth error for ${relayUrl}:`, error);
+      return false;
+    }
+  }
+
+  public isRelayAuthenticated(relayUrl: string): boolean {
+    return this.authenticatedRelays.get(relayUrl) === true;
   }
 
   public async subscribe(
@@ -177,11 +215,11 @@ export class NostrManager {
       }
 
       if (!params.onevent) {
-        params.onevent = () => {};
+        params.onevent = () => { };
       }
 
       if (!params.oneose) {
-        params.oneose = () => {};
+        params.oneose = () => { };
       }
 
       const onEvent = params.onevent;
@@ -203,7 +241,12 @@ export class NostrManager {
     });
   }
 
-  public async publish(event: NostrEvent, relayUrls?: string[]): Promise<void> {
+  // Authenticate to relay if autoAuth is enabled and publish event
+  public async publish(
+    event: NostrEvent,
+    relayUrls?: string[],
+    signer?: NostrSigner
+  ): Promise<void> {
     if (!this.params.writable) throw new Error("not writable");
     if (relayUrls) {
       for (const relayUrl of relayUrls) {
@@ -215,6 +258,22 @@ export class NostrManager {
       ? this.relays.filter((r) => relayUrls.includes(r.url))
       : this.relays;
     this.keepAlive(relays);
+
+    if (this.params.autoAuth && signer) {
+      for (const relay of relays) {
+        if (!relay.authenticated) {
+          try {
+            const result = await this.authenticateToRelay(signer, relay.url);
+            if (!result) {
+              console.warn(`Publishing to ${relay.url} without authentication`);
+            }
+          } catch (error) {
+            console.warn(`Failed to authenticate to ${relay.url}, publishing anyway`);
+          }
+        }
+      }
+    }
+
     await Promise.allSettled(
       this.pool.publish(
         relays.map((r) => r.url),
@@ -243,6 +302,7 @@ export class NostrManager {
       activeSubs: [],
       sleeping: true,
       lastActive: Date.now(),
+      authenticated: false,
     };
     this.relays.push(relay);
   }
@@ -258,8 +318,34 @@ export class NostrManager {
     }
   }
 
+  public async authenticateToRelays(
+    signer: NostrSigner,
+    relayUrls?: string[]
+  ): Promise<Map<string, boolean>> {
+    if (!relayUrls || relayUrls.length === 0) {
+      relayUrls = this.relays.map(r => r.url);
+    }
+
+    console.info(`🔑 Attempting NIP-42 authentication for ${relayUrls.length} relay(s)...`);
+    const results = await authenticateToRelays(this, signer, relayUrls);
+
+    let successCount = 0;
+    for (const [url, result] of results.entries()) {
+      if (result) successCount++;
+      this.authenticatedRelays.set(url, result);
+      const relayObj = this.relays.find(r => r.url === url);
+      if (relayObj) {
+        relayObj.authenticated = result;
+      }
+    }
+
+    console.info(`✅ NIP-42 Auth complete: ${successCount}/${relayUrls.length} successful`);
+    return results;
+  }
+
   public close() {
     clearTimeout(this.gcTimeout);
+    this.authenticatedRelays.clear();
     for (const relay of this.relays) {
       for (const sub of [...relay.activeSubs]) {
         sub.close();
